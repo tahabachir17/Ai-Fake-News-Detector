@@ -40,6 +40,10 @@ def main():
 
     # 5. Evaluate Model
     results = model.evaluate(X_test, y_test)
+    
+    from sklearn.metrics import confusion_matrix
+    cm = confusion_matrix(y_test, model.predict(X_test))
+    logging.info(f"Confusion Matrix:\n{cm}")
 
     # 6. Save Model
     models_dir = os.path.join(os.path.dirname(__file__), '..', 'fake_news_detector', 'models', 'saved_models')
