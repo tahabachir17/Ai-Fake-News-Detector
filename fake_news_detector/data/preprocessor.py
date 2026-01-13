@@ -1,68 +1,110 @@
-
 import re
 import pandas as pd
+import numpy as np
 import logging
+from sklearn.base import BaseEstimator, TransformerMixin
+import nltk
+from nltk.corpus import stopwords as nltk_stopwords
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-class TextPreprocessor:
+class TextPreprocessor(BaseEstimator, TransformerMixin):
     """
-    Class to preprocess text data for the Fake News Detector.
+    Text preprocessing transformer compatible with Scikit-Learn pipelines.
+    
+    Arguments:
+        stopwords (list, str or None): List of stopwords to remove, or 'english' to use NLTK's english stopwords.
+                                     If None, no stopwords are removed.
     """
-    def __init__(self):
-        pass
+    def __init__(self, stopwords='english'):
+        self.stopwords = stopwords
+        self._final_stopwords = set()
 
-    def clean_text(self, text: str) -> str:
+    def fit(self, X, y=None):
         """
-        Cleans the input text.
-        Args:
-            text (str): Input text string.
-        Returns:
-            str: Cleaned text string.
+        Fit method to prepare stopwords.
         """
-        if not isinstance(text, str):
-            return ""
-        
-        # Lowercase
-        text = text.lower()
-        
-        # Remove URLs
-        text = re.sub(r'https?://\S+|www\.\S+', '', text)
-        
-        # Remove HTML tags
-        text = re.sub(r'<.*?>', '', text)
-        
-        # Remove special characters and numbers (optional, keeping basic punctuation might be useful for some models but TF-IDF usually handles it)
-        # For this baseline, we'll keep it simple and just do basic cleaning.
-        # Removing non-alphanumeric characters but keeping spaces
-        text = re.sub(r'[^\w\s]', '', text)
-        
-        # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        return text
-
-    def preprocess_dataframe(self, df: pd.DataFrame, text_column: str = 'text', title_column: str = 'title') -> pd.DataFrame:
-        """
-        Preprocesses the dataframe: combines title and text, cleans the result.
-        Args:
-            df (pd.DataFrame): Input dataframe.
-            text_column (str): Name of the text column.
-            title_column (str): Name of the title column.
-        Returns:
-            pd.DataFrame: Dataframe with a new 'cleaned_text' column.
-        """
-        logging.info("Preprocessing dataframe...")
-        
-        # Combine title and text if title column exists
-        if title_column in df.columns:
-            logging.info("Combining title and text...")
-            df['full_text'] = df[title_column] + " " + df[text_column]
+        if self.stopwords == 'english':
+            try:
+                self._final_stopwords = set(nltk_stopwords.words('english'))
+            except LookupError:
+                logging.info("Downloading NLTK stopwords...")
+                nltk.download('stopwords')
+                self._final_stopwords = set(nltk_stopwords.words('english'))
+        elif isinstance(self.stopwords, list):
+            self._final_stopwords = set(self.stopwords)
         else:
-            df['full_text'] = df[text_column]
+            self._final_stopwords = set()
             
-        logging.info("Cleaning text...")
-        df['cleaned_text'] = df['full_text'].apply(self.clean_text)
+        return self
+
+    def transform(self, X):
+        """
+        Transforms the input data by applying text cleaning operations.
         
-        logging.info("Preprocessing complete.")
-        return df
+        Args:
+            X (pd.DataFrame, pd.Series, or list): Input text data.
+            
+        Returns:
+            pd.Series: Series containing cleaned text.
+        """
+        # Input handling and conversion to Series
+        if isinstance(X, list):
+            X = pd.Series(X)
+        elif isinstance(X, pd.DataFrame):
+            # If explicit 'text' column exists, use it
+            if 'text' in X.columns:
+                # If 'title' also exists, user might want to combine them, but for a standard Transformer
+                # we usually expect the input to be ready or handle specific logic.
+                # Given previous code used title+text, let's support that if both exist.
+                if 'title' in X.columns:
+                    logging.info("Combining title and text columns...")
+                    X = X['title'].astype(str) + " " + X['text'].astype(str)
+                else:
+                    X = X['text']
+            elif X.shape[1] == 1:
+                X = X.iloc[:, 0]
+            else:
+                # Fallback: assume all columns are text and concat? or just fail.
+                # Let's take the first column to be safe if 'text' isn't there, 
+                # but valid ML pipelines usually select columns before passing here.
+                logging.warning("No 'text' column found. Using the first column as input.")
+                X = X.iloc[:, 0]
+        
+        # Ensure X is a Series
+        if not isinstance(X, pd.Series):
+             X = pd.Series(X)
+
+        # Make a copy and ensure string type
+        X_clean = X.copy().astype(str)
+        
+        logging.info("Starting text cleaning...")
+
+        # 1. Lowercasing (Vectorized)
+        X_clean = X_clean.str.lower()
+        
+        # 2. Removing URLs and HTML tags (Vectorized)
+        # URL regex
+        X_clean = X_clean.str.replace(r'https?://\S+|www\.\S+', ' ', regex=True)
+        # HTML tag regex
+        X_clean = X_clean.str.replace(r'<.*?>', ' ', regex=True)
+        
+        # 3. Removing special characters/punctuation (Vectorized)
+        # Keep word characters and whitespace
+        X_clean = X_clean.str.replace(r'[^\w\s]', '', regex=True)
+        
+        # 4. Removing stopwords
+        if self._final_stopwords:
+            # Note: .apply with a python function is not strictly "vectorized" in the C sense,
+            # but it is the standard Pandas approach for token-level operations like stopword removal.
+            # Strictly vectorized string replacement for all stopwords would require a massive regex,
+            # which can be slower and hit recursion limits.
+            logging.info("Removing stopwords...")
+            stop_words = self._final_stopwords
+            X_clean = X_clean.apply(lambda text: ' '.join([word for word in text.split() if word not in stop_words]))
+            
+        # 5. Remove extra whitespace (Vectorized)
+        X_clean = X_clean.str.replace(r'\s+', ' ', regex=True).str.strip()
+        
+        logging.info("Text cleaning complete.")
+        return X_clean
