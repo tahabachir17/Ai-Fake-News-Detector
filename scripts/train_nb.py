@@ -64,7 +64,7 @@ def main():
     
     # Hyperparameter Grid
     param_grid = {
-        'tfidf__ngram_range': [(1, 1), (1, 2), (1, 3)],
+        'tfidf__ngram_range': [(1, 1), (1, 2)], # Removed (1, 3) to save memory
         'tfidf__max_df': [0.75, 1.0],
         'tfidf__min_df': [1, 2],
         'clf__alpha': [0.1, 0.5, 1.0]
@@ -74,7 +74,7 @@ def main():
         nb_model.model, 
         param_grid, 
         cv=3, 
-        n_jobs=-1, 
+        n_jobs=1, # Set to 1 to avoid PicklingError/MemoryError on Windows with large data
         verbose=1,
         scoring='f1_weighted' # optimize for balanced performance
     )
@@ -100,7 +100,7 @@ def main():
         print(f"{k}: {v:.4f}")
         
     # Visualizations and Reports
-    models_dir = os.path.join(os.path.dirname(__file__), '..', 'models', 'saved_models')
+    models_dir = os.path.join(os.path.dirname(__file__), '..', 'fake_news_detector', 'models', 'saved_models')
     os.makedirs(models_dir, exist_ok=True)
     
     cm_path = os.path.join(models_dir, 'confusion_matrix.png')
