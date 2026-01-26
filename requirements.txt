@@ -3,3 +3,14 @@ numpy
 scikit-learn
 nltk
 streamlit
+fastapi
+uvicorn
+torch
+flake8
+mypy
+pytest
+pytest-cov
+trivy
+requests
+joblib
+
