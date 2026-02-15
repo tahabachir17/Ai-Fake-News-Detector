@@ -15,10 +15,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def main():
     # 1. Load Data
-    loader = DataLoader() # Defaults to fake_news_detector/data/raw
+    loader = DataLoader()  # Defaults to fake_news_detector/data/raw
     df = loader.load_data()
     
-    if df is None:
+    if df is None or df.empty:
         logging.error("Failed to load data. Exiting.")
         return
 
@@ -30,7 +30,9 @@ def main():
     X = df['cleaned_text']
     y = df['label']
     
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
     logging.info(f"Training set size: {len(X_train)}")
     logging.info(f"Test set size: {len(X_test)}")
 
@@ -46,9 +48,12 @@ def main():
     logging.info(f"Confusion Matrix:\n{cm}")
 
     # 6. Save Model
-    models_dir = os.path.join(os.path.dirname(__file__), '..', 'fake_news_detector', 'models', 'saved_models')
+    models_dir = os.path.join(
+        os.path.dirname(__file__), '..', 
+        'fake_news_detector', 'models', 'saved_models'
+    )
     os.makedirs(models_dir, exist_ok=True)
-    model_path = os.path.join(models_dir, 'naive_bayes_model.pkl')
+    model_path = os.path.join(models_dir, 'best_naive_bayes.pkl')
     
     model.save_model(model_path)
     logging.info(f"Model saved to {model_path}")

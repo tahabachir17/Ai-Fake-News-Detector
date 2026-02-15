@@ -1,4 +1,3 @@
-
 import logging
 import joblib
 import os
@@ -6,37 +5,46 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, classification_report
-try:
-    from fake_news_detector.models.evaluator import Evaluator # Assuming you might want to use a separate evaluator later, but for now strict implementation
-    # Actually, let's keep it self-contained or use standard metrics
-    pass
-except ImportError:
-    pass
+
+from fake_news_detector.data.preprocessor import TextPreprocessor
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 class NaiveBayesModel:
     """
     Naive Bayes Model with TF-IDF Vectorization for Fake News Detection.
-    Features: TF-IDF with n-grams (1-3).
+    
+    Features:
+        - TF-IDF with configurable n-grams
+        - Integrated TextPreprocessor for end-to-end inference
+        - Supports both raw text and URL inputs
     """
+
     def __init__(self, ngram_range=(1, 3)):
         """
         Initialize the model pipeline.
+        
         Args:
             ngram_range (tuple): The range of n-grams for TF-IDF.
         """
         self.model = Pipeline([
-            ('tfidf', TfidfVectorizer(ngram_range=ngram_range, stop_words='english', max_features=50000)),
+            ('tfidf', TfidfVectorizer(
+                ngram_range=ngram_range,
+                stop_words='english',
+                max_features=50000
+            )),
             ('clf', MultinomialNB())
         ])
         self.ngram_range = ngram_range
+        self._preprocessor = TextPreprocessor()
 
     def train(self, X_train, y_train):
         """
-        Train the model.
+        Train the model on preprocessed text data.
+        
         Args:
-            X_train: Training text data.
+            X_train: Training text data (iterable of strings).
             y_train: Training labels.
         """
         logging.info("Training Naive Bayes model...")
@@ -45,20 +53,83 @@ class NaiveBayesModel:
 
     def predict(self, X):
         """
-        Predict labels for new data.
+        Predict labels for preprocessed text data.
+        
         Args:
-            X: Input text data.
+            X: Input text data (iterable of strings).
+            
         Returns:
-            Predictions.
+            numpy.ndarray: Predicted labels.
         """
         return self.model.predict(X)
 
+    def predict_proba(self, X):
+        """
+        Return class probability estimates for preprocessed text data.
+        
+        Args:
+            X: Input text data (iterable of strings).
+            
+        Returns:
+            numpy.ndarray: Probability estimates (shape: n_samples x n_classes).
+        """
+        return self.model.predict_proba(X)
+
+    def predict_from_input(self, user_input: str) -> dict:
+        """
+        End-to-end prediction from raw text or a URL.
+        
+        Handles preprocessing internally:
+            - If input is a URL → scrapes article text first
+            - Applies text cleaning
+            - Runs TF-IDF + NB prediction
+        
+        Args:
+            user_input (str): Raw article text or a URL.
+            
+        Returns:
+            dict: {
+                'label': str,           # Predicted class label
+                'score': float,         # Confidence (max probability)
+                'probabilities': dict,  # {class: probability, ...}
+                'input_type': str       # 'url' or 'text'
+            }
+        """
+        try:
+            input_type = 'url' if self._preprocessor.is_url(user_input) else 'text'
+            cleaned_text = self._preprocessor.process_input(user_input)
+
+            prediction = self.model.predict([cleaned_text])[0]
+            probabilities = self.model.predict_proba([cleaned_text])[0]
+
+            classes = self.model.classes_
+            prob_dict = {str(cls): float(prob) for cls, prob in zip(classes, probabilities)}
+
+            return {
+                'label': str(prediction),
+                'score': float(max(probabilities)),
+                'probabilities': prob_dict,
+                'input_type': input_type
+            }
+
+        except Exception as e:
+            logging.error(f"Error during prediction: {e}")
+            return {
+                'label': 'ERROR',
+                'score': 0.0,
+                'probabilities': {},
+                'input_type': 'unknown',
+                'message': str(e)
+            }
+
     def evaluate(self, X_test, y_test):
         """
-        Evaluate the model.
+        Evaluate the model on preprocessed test data.
+        
         Args:
-            X_test: Test text data.
+            X_test: Test text data (iterable of strings).
             y_test: Test labels.
+            
         Returns:
             dict: Dictionary containing accuracy and classification report.
         """
@@ -66,10 +137,10 @@ class NaiveBayesModel:
         predictions = self.predict(X_test)
         accuracy = accuracy_score(y_test, predictions)
         report = classification_report(y_test, predictions)
-        
+
         logging.info(f"Accuracy: {accuracy}")
         logging.info(f"Classification Report:\n{report}")
-        
+
         return {
             "accuracy": accuracy,
             "classification_report": report
@@ -77,20 +148,32 @@ class NaiveBayesModel:
 
     def save_model(self, filepath: str):
         """
-        Save the trained model to disk.
+        Save the trained model pipeline to disk.
+        
         Args:
-            filepath (str): Path to save the model.
+            filepath (str): Destination path.
         """
+        directory = os.path.dirname(filepath)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+
         logging.info(f"Saving model to {filepath}...")
         joblib.dump(self.model, filepath)
         logging.info("Model saved.")
 
     def load_model(self, filepath: str):
         """
-        Load a trained model from disk.
+        Load a trained model pipeline from disk.
+        
         Args:
-            filepath (str): Path to load the model from.
+            filepath (str): Path to the saved model.
+            
+        Raises:
+            FileNotFoundError: If the model file doesn't exist.
         """
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"Model file not found: {filepath}")
+
         logging.info(f"Loading model from {filepath}...")
         self.model = joblib.load(filepath)
         logging.info("Model loaded.")

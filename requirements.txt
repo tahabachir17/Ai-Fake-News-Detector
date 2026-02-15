@@ -13,4 +13,5 @@ pytest-cov
 trivy
 requests
 joblib
+beautifulsoup4
 

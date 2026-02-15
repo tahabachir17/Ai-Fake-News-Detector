@@ -42,6 +42,14 @@ st.markdown("""
     .fake {
         background-color: #F44336;
     }
+    .input-info {
+        padding: 8px 12px;
+        border-radius: 5px;
+        background-color: #E3F2FD;
+        color: #1565C0;
+        font-size: 0.9rem;
+        margin-top: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -58,6 +66,10 @@ st.sidebar.info(
     - Naive Bayes: Fast and effective baseline.
     - SVM: (Coming Soon)
     - Transformer: (Coming Soon)
+    
+    **Input Options:**
+    - Paste article text directly
+    - Provide a URL to a news article
     """
 )
 st.sidebar.title("Navigation")
@@ -67,19 +79,33 @@ st.sidebar.markdown("[Project Documentation](https://github.com/tahabachir17/Ai-
 
 # Initialize Resources
 @st.cache_resource
-def load_resources():
-    preprocessor = TextPreprocessor()
-    # No extensive loading needed for preprocessor currently unless we preload heavy nltk data
-    return preprocessor
-
-preprocessor = load_resources()
+def load_predictor(model_name):
+    return FakeNewsPredictor(model_name=model_name)
 
 # Input Section
 col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("Analyze Article")
-    article_text = st.text_area("Paste the news article text here:", height=300)
+    
+    # Input type selection
+    input_type = st.radio(
+        "Choose input type:",
+        ("Text", "URL"),
+        horizontal=True
+    )
+    
+    if input_type == "Text":
+        user_input = st.text_area(
+            "Paste the news article text here:",
+            height=300,
+            placeholder="Paste the full article text here..."
+        )
+    else:
+        user_input = st.text_input(
+            "Enter the article URL:",
+            placeholder="https://www.example.com/news-article"
+        )
 
 with col2:
     st.subheader("Configuration")
@@ -88,63 +114,71 @@ with col2:
         ("Naive Bayes", "SVM", "Transformer")
     )
     
-    analyze_button = st.button("Analyze Article", type="primary", use_container_width=True)
+    analyze_button = st.button(
+        "🔍 Analyze Article",
+        type="primary",
+        use_container_width=True
+    )
 
 if analyze_button:
-    if not article_text.strip():
-        st.warning("Please enter some text to analyze.")
+    if not user_input or not user_input.strip():
+        st.warning("Please enter some text or a URL to analyze.")
     else:
-        # Load Predictor (Lazy loading based on selection)
-        # Note: We re-instantiate predictor to switch models if needed, 
-        # but for caching purposes, we could cache the predictor itself.
-        predictor = FakeNewsPredictor(model_name=model_choice.lower().replace(" ", "_"))
+        # Load Predictor (cached per model name)
+        model_key = model_choice.lower().replace(" ", "_")
+        predictor = load_predictor(model_name=model_key)
         
         if predictor.model is None and predictor.model_name == 'naive_bayes':
-             st.error("Model not found! Has the model been trained yet? Please run training script.")
+            st.error("Model not found! Has the model been trained yet? Please run the training script.")
         elif predictor.model is None:
-             st.info(f"{model_choice} model is not yet implemented. Please try Naive Bayes.")
+            st.info(f"{model_choice} model is not yet implemented. Please try Naive Bayes.")
         else:
             with st.spinner("Analyzing..."):
-                # Simulating processing time for better UX
-                time.sleep(0.5) 
+                time.sleep(0.3)
                 
-                # Preprocess
-                # Note: The predictor should ideally handle preprocessing or expect raw text if the pipeline includes it.
-                # In train_nb.py, we saw the pipeline includes TfidfVectorizer but NOT TextPreprocessor?
-                # Wait, train_nb.py did preprocessing manually THEN passed to TfidfVectorizer.
-                # So we must preprocess here before passing to predictor.model.predict() if the saved model strictly expects clean text.
-                # Checking train_nb.py: "grid_search.fit(X_train['text'], y_train)" where X_train['text'] was PREPROCESSED.
-                # So YES, we must preprocess here.
-                
-                cleaned_text_series = preprocessor.transform([article_text])
-                cleaned_text = cleaned_text_series.iloc[0]
-                
-                # Predict
-                result = predictor.predict(cleaned_text)
-                
+                # Predict — preprocessor handles URL detection + text cleaning internally
+                result = predictor.predict(user_input.strip())
+            
             # Display Results
             if result['label'] == 'ERROR':
-                st.error(result['message'])
+                st.error(f"❌ Error: {result.get('message', 'Unknown error')}")
             else:
                 st.divider()
+                
+                # Show input type info
+                detected = result.get('input_type', 'text')
+                if detected == 'url':
+                    st.markdown(
+                        '<div class="input-info">📡 Article text was extracted from the provided URL</div>',
+                        unsafe_allow_html=True
+                    )
+                
                 r_col1, r_col2 = st.columns([1, 1])
                 
                 with r_col1:
                     # Confidence Metric
-                    st.metric(label="Confidence Score", value=f"{result['score']:.2%}")
+                    st.metric(
+                        label="Confidence Score",
+                        value=f"{result['score']:.2%}"
+                    )
                     
                     # Result Box
                     label = result['label']
-                    # Assuming standard labels, but adjusting for display
                     display_label = label.upper()
-                    css_class = "real" if "REAL" in display_label else "fake"
-                    
-                    st.markdown(f'<div class="result-box {css_class}">{display_label}</div>', unsafe_allow_html=True)
+                    css_class = "real" if "REAL" in display_label or display_label == "0" else "fake"
+                    display_text = "✅ REAL NEWS" if css_class == "real" else "🚨 FAKE NEWS"
+
+                    st.markdown(
+                        f'<div class="result-box {css_class}">{display_text}</div>',
+                        unsafe_allow_html=True
+                    )
 
                 with r_col2:
                     st.subheader("Probability Distribution")
                     probs = result['probabilities']
-                    prob_df = pd.DataFrame(list(probs.items()), columns=['Label', 'Probability'])
+                    prob_df = pd.DataFrame(
+                        list(probs.items()),
+                        columns=['Label', 'Probability']
+                    )
                     prob_df.set_index('Label', inplace=True)
                     st.bar_chart(prob_df)
-

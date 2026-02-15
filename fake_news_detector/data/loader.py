@@ -14,6 +14,16 @@ class DataLoader:
     def __init__(self, raw_data_path: str = "fake_news_detector/data/raw"):
         self.collector = DataCollector(raw_data_path)
 
+    def load_data(self) -> Optional[pd.DataFrame]:
+        """
+        Convenience method to load raw data.
+        Alias for fetch_raw_data().
+        
+        Returns:
+            pd.DataFrame: Merged dataframe with normalized columns.
+        """
+        return self.fetch_raw_data()
+
     def fetch_raw_data(self) -> Optional[pd.DataFrame]:
         """
         Fetches fresh data using DataCollector.
