@@ -64,7 +64,7 @@ st.sidebar.info(
     
     **Available Models:**
     - Naive Bayes: Fast and effective baseline.
-    - SVM: (Coming Soon)
+    - SVM: Linear SVM with TF-IDF
     - Transformer: (Coming Soon)
     
     **Input Options:**

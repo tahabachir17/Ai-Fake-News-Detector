@@ -39,10 +39,21 @@ class FakeNewsPredictor:
                         f"Model file not found at {model_path}. "
                         "Please train the model first."
                     )
-            elif self.model_name in ['svm', 'transformer']:
+            elif self.model_name == 'svm':
+                model_path = os.path.join(self.models_dir, 'best_svm.pkl')
+                if os.path.exists(model_path):
+                    logging.info(f"Loading SVM model from {model_path}...")
+                    self.model = joblib.load(model_path)
+                    logging.info("SVM model loaded successfully.")
+                else:
+                    logging.warning(
+                        f"SVM model file not found at {model_path}. "
+                        "Please train the SVM model first (python scripts/train_svm.py)."
+                    )
+            elif self.model_name == 'transformer':
                 logging.warning(
                     f"Model '{self.model_name}' is not yet implemented. "
-                    "Please select 'naive_bayes'."
+                    "Please select 'naive_bayes' or 'svm'."
                 )
             else:
                 logging.error(f"Unknown model name: {self.model_name}")
