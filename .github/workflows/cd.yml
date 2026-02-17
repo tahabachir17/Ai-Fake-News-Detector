@@ -95,7 +95,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: docker
-    environment: staging
+    # environment: staging  # Uncomment after creating a 'staging' environment in GitHub Settings → Environments
 
     steps:
       - name: Deploy notification
